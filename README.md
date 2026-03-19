@@ -67,9 +67,7 @@
 ![img](./result/shi_lin_guan.jpg)
 ![img](./result/single_blue.jpg)
 ![img](./result/police.jpg)
-![img](./result/police.jpg)
 ![img](./result/single_yellow.jpg)
-![img](./result/single_blue.jpg)
 
 
 ---
