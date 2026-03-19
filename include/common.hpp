@@ -1,4 +1,3 @@
-// common.hpp（放在顶层目录）
 #ifndef COMMON_HPP
 #define COMMON_HPP
 
@@ -75,7 +74,7 @@ struct Binding {
 };
 
 struct Object {
-    cv::Rect_<float>   rect;   // 检测框，字段名是 rect
+    cv::Rect_<float>   rect; 
     int                label = 0;
     float              prob  = 0.0;
     std::vector<float> kps;

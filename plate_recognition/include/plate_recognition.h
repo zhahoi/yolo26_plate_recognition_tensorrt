@@ -38,10 +38,10 @@ public:
     plate_recogn::PlateResult postprocess(bool is_color = true);
 
     static void decodePlate(
-        const int*          preds,        // argmax 后的索引序列 [SEQ_LEN]
+        const int*          preds,        
         int                 seq_len,
-        std::vector<int>&   out_indices,  // 有效字符索引
-        std::vector<int>&   out_positions // 对应原始位置（用于取概率）
+        std::vector<int>&   out_indices,  
+        std::vector<int>&   out_positions 
     );
 
     static void softmax(float* data, int len);

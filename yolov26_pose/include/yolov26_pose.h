@@ -32,15 +32,12 @@ public:
 
     void infer();
 
-    // CPU 后处理：适配原始非 end2end 输出 (56, 8400)，含 NMS
-    // 注意：postprocess 内部用的是 obj.rect，需与 common.hpp 字段对齐
     void postprocess(
         std::vector<pose::Object>& objs,
         float score_thres = 0.25f,
         float iou_thres   = 0.65f,
         int   topk        = 100);
 
-    // GPU 后处理：适配 end2end=True 输出 (1, 300, 14)，无需 NMS
     void postprocessGPU(
         std::vector<pose::Object>& objs,
         float score_thres = 0.25f);
