@@ -35,7 +35,6 @@ public:
     void postprocess(
         std::vector<pose::Object>& objs,
         float score_thres = 0.25f,
-        float iou_thres   = 0.65f,
         int   topk        = 100);
 
     void postprocessGPU(

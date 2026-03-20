@@ -25,7 +25,6 @@ int main(int argc, char** argv)
     cv::Size size = cv::Size{640, 640};
     int topk = 100;
     float score_thres = 0.25f;
-    float iou_thres = 0.65f;
 
     auto yolov26_pose = new YOLOv26_pose(engine_file_path);
     yolov26_pose->make_pipe(true);
@@ -40,7 +39,7 @@ int main(int argc, char** argv)
     
     objs.clear();
 
-    // yolov26_pose->postprocess(objs, score_thres, iou_thres, topk);
+    // yolov26_pose->postprocess(objs, score_thres, topk);
     yolov26_pose->postprocessGPU(objs, score_thres);
 
     cv::Mat res = image.clone();

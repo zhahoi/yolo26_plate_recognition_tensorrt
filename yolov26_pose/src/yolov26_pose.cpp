@@ -335,11 +335,17 @@ void YOLOv26_pose::postprocessGPU(
     cuda_postprocess(objs, d_output, max_det, this->pparam, score_thres);
 }
 
-void YOLOv26_pose::postprocess(std::vector<pose::Object>& objs, float score_thres, float iou_thres, int topk)
+void YOLOv26_pose::postprocess(
+    std::vector<pose::Object>& objs,
+    float score_thres,
+    int   topk)
 {
     objs.clear();
-    auto num_channels = this->output_bindings[0].dims.d[1]; // 56 = 4（框） + 1（目标置信度） + 17 * 3（关键点）
-    auto num_anchors  = this->output_bindings[0].dims.d[2]; // 8400
+
+    // end2end 输出: [1, 300, 14]
+    // dims.d[1] = 300 (max_det)
+    // dims.d[2] = 14  (fields)
+    int max_det = (int)this->output_bindings[0].dims.d[1];
 
     auto& dw     = this->pparam.dw;
     auto& dh     = this->pparam.dh;
@@ -347,74 +353,56 @@ void YOLOv26_pose::postprocess(std::vector<pose::Object>& objs, float score_thre
     auto& height = this->pparam.height;
     auto& ratio  = this->pparam.ratio;
 
-    std::vector<cv::Rect>           bboxes;
-    std::vector<float>              scores;
-    std::vector<int>                labels;
-    std::vector<int>                indices;
-    std::vector<std::vector<float>> kpss;
-
-    cv::Mat output = cv::Mat(num_channels, num_anchors, CV_32F, static_cast<float*>(this->host_ptrs[0]));
-    output         = output.t(); // （8400,56)
-    for (int i = 0; i < num_anchors; i++) {
-        auto row_ptr    = output.row(i).ptr<float>();
-        auto bboxes_ptr = row_ptr; // 目标框：中心宽高
-        auto scores_ptr = row_ptr + 4;  // 目标置信度
-        auto kps_ptr    = row_ptr + 5;  // 关键点信息
-
-        float score = *scores_ptr;
-        if (score > score_thres) {
-            float x = *bboxes_ptr++ - dw;
-            float y = *bboxes_ptr++ - dh;
-            float w = *bboxes_ptr++;
-            float h = *bboxes_ptr;
-
-            float x0 = clamp((x - 0.5f * w) * ratio, 0.f, width);
-            float y0 = clamp((y - 0.5f * h) * ratio, 0.f, height);
-            float x1 = clamp((x + 0.5f * w) * ratio, 0.f, width);
-            float y1 = clamp((y + 0.5f * h) * ratio, 0.f, height);
-
-            cv::Rect_<float> bbox;
-            bbox.x      = x0;
-            bbox.y      = y0;
-            bbox.width  = x1 - x0;
-            bbox.height = y1 - y0;
-            std::vector<float> kps;
-            for (int k = 0; k < 17; k++) {
-                float kps_x = (*(kps_ptr + 3 * k) - dw) * ratio;
-                float kps_y = (*(kps_ptr + 3 * k + 1) - dh) * ratio;
-                float kps_s = *(kps_ptr + 3 * k + 2);
-                kps_x       = clamp(kps_x, 0.f, width);
-                kps_y       = clamp(kps_y, 0.f, height);
-                kps.push_back(kps_x);
-                kps.push_back(kps_y);
-                kps.push_back(kps_s);
-            }
-
-            bboxes.push_back(bbox);
-            labels.push_back(0);
-            scores.push_back(score);
-            kpss.push_back(kps);
-        }
-    }
-
-#ifdef BATCHED_NMS
-    cv::dnn::NMSBoxesBatched(bboxes, scores, labels, score_thres, iou_thres, indices);
-#else
-    cv::dnn::NMSBoxes(bboxes, scores, score_thres, iou_thres, indices);
-#endif
+    // host_ptrs[0] 对应输出，内存布局 [max_det, 14]
+    // 14维: [x1, y1, x2, y2, conf, cls, kpt0x, kpt0y, kpt1x, kpt1y, kpt2x, kpt2y, kpt3x, kpt3y]
+    const float* ptr = static_cast<const float*>(this->host_ptrs[0]);
 
     int cnt = 0;
-    for (auto& i : indices) {
-        if (cnt >= topk) {
-            break;
+    for (int i = 0; i < max_det; ++i) {
+        if (cnt >= topk) break;
+
+        const float* p = ptr + i * 14;
+
+        float conf = p[4];
+        if (conf < score_thres) continue;
+
+        // bbox: 已经是 xyxy 格式，在 letterbox 空间，需要还原到原图
+        float x0 = (p[0] - dw) * ratio;
+        float y0 = (p[1] - dh) * ratio;
+        float x1 = (p[2] - dw) * ratio;
+        float y1 = (p[3] - dh) * ratio;
+
+        x0 = clamp(x0, 0.f, width);
+        y0 = clamp(y0, 0.f, height);
+        x1 = clamp(x1, 0.f, width);
+        y1 = clamp(y1, 0.f, height);
+
+        if (x0 >= x1 || y0 >= y1) continue;
+
+        // 关键点：4个，每个只有 x,y（无 visibility）
+        // p[6..13] = [kpt0x, kpt0y, kpt1x, kpt1y, kpt2x, kpt2y, kpt3x, kpt3y]
+        std::vector<float> kps;
+        kps.reserve(8);
+        for (int k = 0; k < 4; ++k) {
+            float kx = (p[6 + 2*k]     - dw) * ratio;
+            float ky = (p[6 + 2*k + 1] - dh) * ratio;
+            kx = clamp(kx, 0.f, width);
+            ky = clamp(ky, 0.f, height);
+            kps.push_back(kx);
+            kps.push_back(ky);
         }
+
         pose::Object obj;
-        obj.rect  = bboxes[i];
-        obj.prob  = scores[i];
-        obj.label = labels[i];
-        obj.kps   = kpss[i];
+        obj.rect.x      = x0;
+        obj.rect.y      = y0;
+        obj.rect.width  = x1 - x0;
+        obj.rect.height = y1 - y0;
+        obj.prob        = conf;
+        obj.label       = static_cast<int>(p[5]);
+        obj.kps         = kps;
+
         objs.push_back(obj);
-        cnt += 1;
+        ++cnt;
     }
 }
 
