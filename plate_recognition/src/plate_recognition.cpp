@@ -160,7 +160,7 @@ void PlateRecognition::make_pipe(bool warmup)
 
 void PlateRecognition::copy_from_Mat(const cv::Mat& image)
 {
-    // 1. resize 到 (216, 48)
+    // 1. resize 到 (168, 48)
     cv::Mat resized;
     // 对小图用 INTER_CUBIC，比默认的 INTER_LINEAR 保留更多细节
     int interp = (image.cols < PLATE_INPUT_W || image.rows < PLATE_INPUT_H)
